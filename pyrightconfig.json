@@ -1,3 +1,7 @@
 {
-  "reportUnknownVariableType": "none"
+  "reportUnknownVariableType": "none",
+  "reportMissingTypeStubs": "none",
+  "reportUnknownMemberType": "none",
+  "reportUnknownArgumentType": "none",
+  "reportUnknownLambdaType": "none"
 }

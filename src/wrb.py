@@ -1,7 +1,11 @@
+#!/usr/bin/env python
+
 import os
+
 from sys import argv
 from subprocess import call
-from parsy import regex, string, ParseError
+from typing import override
+from parsy import regex, string, ParseError, seq
 
 
 # prints out lovely bold green text
@@ -9,10 +13,15 @@ def info(msg: str):
     print(f"\033[92m\033[1m{msg}\033[0m")
 
 
+# not so lovely bold red text
+def error(msg: str):
+    print(f"\033[91m\033[1m{msg}\033[0m")
+
+
 # whether f2 is new than f1
 def newer(f1: str, f2: str) -> bool:
-    if os.path.exists(f2):
-        return os.path.getmtime(f1) < os.path.getmtime(f2)
+    if os.path.exists(f1):
+        return os.path.getmtime(f2) < os.path.getmtime(f1)
     else:
         return False
 
@@ -22,7 +31,14 @@ def compile(compiler: str, flags: list[str], input: list[str], output: str):
     cmd = [compiler] + flags + input + ["-o"] + [output]
     info(f"Trying to build {output}")
     # the output is newer than all of its input, no need to rebuild
-    if all(map(lambda i: newer(i, output), input)):
+    # we force a rebuild if the Wrenchfile was updated
+    if all(
+        map(
+            lambda i: (not os.path.exists("Wrenchfile") or newer(output, "Wrenchfile"))
+            and newer(output, i),
+            input,
+        )
+    ):
         return
     print(" ".join(cmd))
     if call(cmd, cwd=os.getcwd()) != 0:
@@ -38,9 +54,12 @@ def ar(input: list[str], output: str):
         exit(-1)
 
 
-# parses #include "foo.h" -> foo
+spaces = regex(r"\s*")
+# any spaces + #include + any spaces + " + name of header + .h" + any spaces
 include = (
-    (regex("[ \t]*") << string('#include "')) >> regex(".*?\\.h") << regex('".*\n')
+    (string("#include") << regex(r"\s+") << string('"'))
+    >> regex("[^.]+")
+    << string(r'.h"')
 )
 
 
@@ -50,16 +69,17 @@ def get_deps(file: str) -> set[str]:
     for line in open(file).readlines():
         try:
             # got a local include
-            dep_header = include.parse(line)
+            dep: str = include.parse(line.strip())
+            dep_header = dep + ".h"
             # add all dependencies in header
             result = result.union(get_deps(dep_header))
             # add all dependencies in implementation
-            dep = dep_header[:-1] + "c"
+            dep_impl = dep + ".c"
             # it'd better not be it self, which happens when x.c included x.h
             # and it'd better exist, since maybe x.h was a single header
-            if dep != file and os.path.exists(dep):
-                result.add(dep)
-                result = result.union(get_deps(dep))
+            if dep_impl != file and os.path.exists(dep_impl):
+                result.add(dep_impl)
+                result = result.union(get_deps(dep_impl))
         except ParseError:
             pass
     return result
@@ -103,21 +123,131 @@ def ensure_build_dir():
         os.makedirs(build_directory)
 
 
-# api for wr.py
+class Var:
+    name: str
+
+    def __init__(self, name: str):
+        self.name = name
+
+    @override
+    def __repr__(self):
+        return f"var({self.name})"
+
+
+def resolve_single(name: str, table: dict[str, list[str | Var]]):
+    val = table[name]
+    result: list[str] = []
+    for str_or_var in val:
+        if isinstance(str_or_var, str):
+            result.append(str_or_var)
+        else:
+            var = str_or_var.name
+            var_val = table.get(var)
+            if var_val is None:
+                error("{var} used but not declared")
+                exit(-1)
+            else:
+                resolve_single(var, table)
+                result += table[var]  # type: ignore[reportAttributeAccessIssue]
+    table[name] = result  # type: ignore[reportAttributeAccessIssue]
+
+
+def resolve(table: dict[str, list[str | Var]]):
+    for name in table:
+        if all(map(lambda sv: sv is str, table[name])):
+            pass
+        else:
+            resolve_single(name, table)
+
+
+var_parser = seq(
+    name=regex(r"[^=\s]+") << spaces << string("="),
+    val=(spaces >> regex(".+")).map(
+        lambda args: list(
+            map(
+                lambda arg: Var(arg[2:-1])
+                if arg.startswith("$(") and arg.endswith(")")
+                else arg,
+                args.split(),
+            )
+        )
+    ),
+)
+
+
+def read_vars() -> dict[str, list[str]]:
+    if os.path.exists("Wrenchfile"):
+        lookup: dict[str, list[str | Var]] = {}
+        for line in open("Wrenchfile").readlines():
+            try:
+                key_val = var_parser.parse(line.strip())  # type: ignore[reportAny]
+                lookup[key_val["name"]] = key_val["val"]
+            except ParseError:
+                pass
+        resolve(lookup)
+        return lookup  # type: ignore[reportReturnType]
+    else:
+        return {"CC": ["gcc"], "CFLAGS": []}
+
+
+def rm(files: list[str]):
+    cmd = ["rm"] + files
+    if len(cmd) > 1:
+        print(" ".join(cmd))
+        if call(cmd) != 0:
+            exit(-1)
+
+
+# api functions
 def build(reqs: list[str], cc: str, flags: list[str]):
     for requirement in reqs:
         satisfy(requirement, cc, flags, os.getcwd())
 
 
+def clean(targets: list[str]):
+    for target in targets:
+        info(f"Trying to clean build output of {target}")
+        target_impl: str
+        shared_lib = target.endswith(".a")
+        if shared_lib:
+            # wants shared library
+            target_impl = target[:-1] + "c"
+        else:
+            # wants executable
+            target_impl = target + ".c"
+        rm(
+            list(
+                filter(
+                    os.path.exists,
+                    list(
+                        map(
+                            lambda s: build_dir(s[:-1] + "o"),
+                            list(get_deps(target_impl).union({target_impl})),
+                        )
+                    )
+                    + [target],
+                )
+            )
+        )
+
+
 # Main
 if __name__ == "__main__":
-    cc: str = "gcc"
-    flags: list[str] = []
+    # clean up
+    if argv[1] == "--clean":
+        clean(argv[2:])
+        exit(0)
 
     # read flags from Wrenchfile
-    if os.path.exists("Wrenchfile"):
-        for line in open("Wrenchfile").readline():
-            pass
+    vars = read_vars()
+    for k, v in vars.items():
+        print(f"{k}={' '.join(v)}")
+    cc = "gcc" if vars.get("CC") is None else vars["CC"][0]
+    # flags is CFLAGS + L(LIBDIRS) + l(LIBS)
+    flags = vars.get("CFLAGS", [])
+    flags += list(map(lambda s: "-L" + s, vars.get("LIBDIRS", [])))
+    flags += list(map(lambda s: "-l" + s, vars.get("LIBS", [])))
+    targets = set(vars.get("BUILD", [])).union(set(argv[1:]))
 
     ensure_build_dir()
-    build(argv[1:], cc, flags)
+    build(list(targets), cc, flags)

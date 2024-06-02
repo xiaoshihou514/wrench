@@ -1,0 +1,14 @@
+CC = clang
+    MY_VAR  = -Iheaders
+CFLAGS   = -Wall     -Werror -g $(MY_VAR)
+
+
+
+BUILD    = target1   target2    *_parser.a
+    LIBDIRS  =lib1 lib2 $(ERROR)
+ LIB= map set   hash
+ERROR =lib3
+
+SHELL= fish
+
+
