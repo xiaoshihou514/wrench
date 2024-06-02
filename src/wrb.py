@@ -233,10 +233,23 @@ def clean(targets: list[str]):
 
 # Main
 if __name__ == "__main__":
-    # clean up
-    if argv[1] == "--clean":
-        clean(argv[2:])
-        exit(0)
+    targets_argv = argv[1:]
+
+    cleanup = False
+    exit_after_clean = False
+    # check for arguments
+    if len(argv) > 1:
+        opt = argv[1]
+        # give the user some help
+        if opt == "--help":
+            print(help)
+            exit(0)
+
+        # whether we are asked to clean up
+        exit_after_clean = opt == "--clean"
+        cleanup = opt == "--clean" or opt == "--allclean"
+        if cleanup:
+            targets_argv = targets_argv[1:]
 
     # read flags from Wrenchfile
     vars = read_vars()
@@ -247,7 +260,13 @@ if __name__ == "__main__":
     flags = vars.get("CFLAGS", [])
     flags += list(map(lambda s: "-L" + s, vars.get("LIBDIRS", [])))
     flags += list(map(lambda s: "-l" + s, vars.get("LIBS", [])))
-    targets = set(vars.get("BUILD", [])).union(set(argv[1:]))
+    targets = set(vars.get("BUILD", [])).union(set(targets_argv))
+
+    # cleanup logic
+    if cleanup:
+        clean(list(targets))
+        if exit_after_clean:
+            exit(0)
 
     ensure_build_dir()
     build(list(targets), cc, flags)
