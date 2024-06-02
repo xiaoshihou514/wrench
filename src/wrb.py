@@ -7,6 +7,14 @@ from subprocess import call
 from typing import override
 from parsy import regex, string, ParseError, seq
 
+help_str = """
+wrench-build
+Build C files without checking all its dependencies
+Usage: wrb [--clean|--allclean] [target1, target2, ...]
+  --clean               Clean build files of target1, target2, ...
+  --allclean            Compile all targets from scratch
+""".strip()
+
 
 # prints out lovely bold green text
 def info(msg: str):
@@ -242,7 +250,7 @@ if __name__ == "__main__":
         opt = argv[1]
         # give the user some help
         if opt == "--help":
-            print(help)
+            print(help_str)
             exit(0)
 
         # whether we are asked to clean up
