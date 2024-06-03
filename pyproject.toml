@@ -1,13 +1,12 @@
 [project]
-name = "wrench"
+name = "wrench_build"
 version = "0.1.0"
-description = "Add your description here"
+description = "Build C files without checking all its dependencies"
 authors = [
     { name = "xiaoshihou514", email = "onelessononeexercise@gmail.com" }
 ]
 dependencies = [
     "parsy>=2.1",
-    "parsy-stubs>=2.1.2",
 ]
 readme = "README.md"
 requires-python = ">= 3.8"
@@ -24,4 +23,9 @@ dev-dependencies = []
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["src"]
+packages = ["src/wrench_build"]
+dev-dependencies = [ "parsy-stubs>=2.1.2" ]
+
+[project.scripts]
+wrb = "wrb:main"
+wr = "wr:main"

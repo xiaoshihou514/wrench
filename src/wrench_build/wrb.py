@@ -1,11 +1,10 @@
-#!/usr/bin/env python
-
 import os
 
 from sys import argv
 from subprocess import call
 from typing import override
 from parsy import regex, string, ParseError, seq
+from .lib import info, error
 
 help_str = """
 wrench-build
@@ -14,16 +13,6 @@ Usage: wrb [--clean|--allclean] [target1, target2, ...]
   --clean               Clean build files of target1, target2, ...
   --allclean            Compile all targets from scratch
 """.strip()
-
-
-# prints out lovely bold green text
-def info(msg: str):
-    print(f"\033[92m\033[1m{msg}\033[0m")
-
-
-# not so lovely bold red text
-def error(msg: str):
-    print(f"\033[91m\033[1m{msg}\033[0m")
 
 
 # whether f2 is new than f1
@@ -245,7 +234,7 @@ if __name__ == "__main__":
 
     cleanup = False
     exit_after_clean = False
-    # check for arguments
+    # check arguments
     if len(argv) > 1:
         opt = argv[1]
         # give the user some help
@@ -254,8 +243,8 @@ if __name__ == "__main__":
             exit(0)
 
         # whether we are asked to clean up
+        cleanup = opt in ["--clean", "--allclean"]
         exit_after_clean = opt == "--clean"
-        cleanup = opt == "--clean" or opt == "--allclean"
         if cleanup:
             targets_argv = targets_argv[1:]
 
