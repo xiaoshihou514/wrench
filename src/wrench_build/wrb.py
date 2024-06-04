@@ -1,11 +1,12 @@
 import os
-
-from sys import argv
 from os.path import exists
-from subprocess import call
+from subprocess import call, Popen, PIPE
+from sys import argv
 from typing import override
-from parsy import regex, string, ParseError, seq
-from wrench_build.lib import info, error
+
+from parsy import ParseError, regex, seq, string
+
+from wrench_build.lib import error, info
 
 help_str = """
 wrench-build
@@ -66,6 +67,14 @@ include = (
 
 # recursively get the dependencies
 def get_deps(file: str) -> set[str]:
+    result: set[str] = get_deps_single(file)
+    for dep in list(result):
+        result = result.union(get_deps(dep))
+    return result
+
+
+# gets dependencies of a single module
+def get_deps_single(file: str) -> set[str]:
     result: set[str] = set()
     for line in open(file).readlines():
         try:
@@ -73,14 +82,13 @@ def get_deps(file: str) -> set[str]:
             dep: str = include.parse(line.strip())
             dep_header = dep + ".h"
             # add all dependencies in header
-            result = result.union(get_deps(dep_header))
+            result = result.union(get_deps_single(dep_header))
             # add all dependencies in implementation
             dep_impl = dep + ".c"
             # it'd better not be it self, which happens when x.c included x.h
             # and it'd better exist, since maybe x.h was a single header
             if dep_impl != file and exists(dep_impl):
                 result.add(dep_impl)
-                result = result.union(get_deps(dep_impl))
         except ParseError:
             pass
     return result
@@ -277,7 +285,18 @@ if __name__ == "__main__":
 
     # only generate graph
     if graph:
-        pass
+        handle = Popen(
+            ["dot", "-Tsvg", "-o", "dependencies.svg"], stdin=PIPE, text=True
+        )
+        dot_file = ['digraph "dependency-graph" {']
+        modules = set()
+        for target in targets:
+            modules = modules.union(map(lambda s: s[:-2], get_deps(target)))
+        for module in modules:
+            for dep in get_deps_single(module):
+                dot_file.append(f'    "{module}" -> "{dep};"')
+        dot_file.append("}")
+        _ = handle.communicate(input="\n".join(dot_file))
 
     ensure_build_dir()
     build(list(targets), cc, flags)

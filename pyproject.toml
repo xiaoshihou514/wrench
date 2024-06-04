@@ -1,6 +1,6 @@
 [project]
 name = "wrench_build"
-version = "0.1.0"
+version = "0.1.2"
 description = "Build C files without checking all its dependencies"
 authors = [
     { name = "xiaoshihou514", email = "onelessononeexercise@gmail.com" }
@@ -27,5 +27,5 @@ packages = ["src/wrench_build"]
 dev-dependencies = [ "parsy-stubs>=2.1.2" ]
 
 [project.scripts]
-wrb = "wrench_build:wrb:main"
-wr = "wrench_build:wr:main"
+wrb = "wrench_build:wrb"
+wr = "wrench_build:wr"

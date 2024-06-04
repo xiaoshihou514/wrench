@@ -15,5 +15,3 @@ if __name__ == "__main__":
         if argv[1] == "--help":
             print(help_str)
             exit(0)
-        if argv[1] == "--dep-graph":
-            pass
