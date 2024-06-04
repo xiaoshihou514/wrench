@@ -1,23 +1,27 @@
 import os
 
 from sys import argv
+from os.path import exists
 from subprocess import call
 from typing import override
 from parsy import regex, string, ParseError, seq
-from .lib import info, error
+from wrench_build.lib import info, error
 
 help_str = """
 wrench-build
 Build C files without checking all its dependencies
-Usage: wrb [--clean|--allclean] [target1, target2, ...]
+Usage: 
+wrb [--clean|--allclean] [target1, target2, ...]
+wrb --gen-dep-graph
   --clean               Clean build files of target1, target2, ...
   --allclean            Compile all targets from scratch
+  --gen-dep-graph       Generates an SVG dependency graph
 """.strip()
 
 
 # whether f2 is new than f1
 def newer(f1: str, f2: str) -> bool:
-    if os.path.exists(f1):
+    if exists(f1):
         return os.path.getmtime(f2) < os.path.getmtime(f1)
     else:
         return False
@@ -31,7 +35,7 @@ def compile(compiler: str, flags: list[str], input: list[str], output: str):
     # we force a rebuild if the Wrenchfile was updated
     if all(
         map(
-            lambda i: (not os.path.exists("Wrenchfile") or newer(output, "Wrenchfile"))
+            lambda i: (not exists("Wrenchfile") or newer(output, "Wrenchfile"))
             and newer(output, i),
             input,
         )
@@ -74,7 +78,7 @@ def get_deps(file: str) -> set[str]:
             dep_impl = dep + ".c"
             # it'd better not be it self, which happens when x.c included x.h
             # and it'd better exist, since maybe x.h was a single header
-            if dep_impl != file and os.path.exists(dep_impl):
+            if dep_impl != file and exists(dep_impl):
                 result.add(dep_impl)
                 result = result.union(get_deps(dep_impl))
         except ParseError:
@@ -116,7 +120,7 @@ def satisfy(out: str, cc: str, flags: list[str], cwd: str):
 
 def ensure_build_dir():
     build_directory: str = os.getcwd() + "/out"
-    if not os.path.exists(build_directory):
+    if not exists(build_directory):
         os.makedirs(build_directory)
 
 
@@ -173,7 +177,7 @@ var_parser = seq(
 
 
 def read_vars() -> dict[str, list[str]]:
-    if os.path.exists("Wrenchfile"):
+    if exists("Wrenchfile"):
         lookup: dict[str, list[str | Var]] = {}
         for line in open("Wrenchfile").readlines():
             try:
@@ -215,7 +219,7 @@ def clean(targets: list[str]):
         rm(
             list(
                 filter(
-                    os.path.exists,
+                    exists,
                     list(
                         map(
                             lambda s: build_dir(s[:-1] + "o"),
@@ -234,19 +238,25 @@ if __name__ == "__main__":
 
     cleanup = False
     exit_after_clean = False
+    graph = False
+
     # check arguments
     if len(argv) > 1:
         opt = argv[1]
-        # give the user some help
+        # --help
         if opt == "--help":
             print(help_str)
             exit(0)
 
-        # whether we are asked to clean up
+        # --clean / --allclean
         cleanup = opt in ["--clean", "--allclean"]
         exit_after_clean = opt == "--clean"
         if cleanup:
             targets_argv = targets_argv[1:]
+
+        # --gen-dep-graph
+        if opt == "--gen-dep-graph":
+            graph = True
 
     # read flags from Wrenchfile
     vars = read_vars()
@@ -264,6 +274,10 @@ if __name__ == "__main__":
         clean(list(targets))
         if exit_after_clean:
             exit(0)
+
+    # only generate graph
+    if graph:
+        pass
 
     ensure_build_dir()
     build(list(targets), cc, flags)

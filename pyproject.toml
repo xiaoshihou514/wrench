@@ -27,5 +27,5 @@ packages = ["src/wrench_build"]
 dev-dependencies = [ "parsy-stubs>=2.1.2" ]
 
 [project.scripts]
-wrb = "wrb:main"
-wr = "wr:main"
+wrb = "wrench_build:wrb:main"
+wr = "wrench_build:wr:main"
