@@ -11,4 +11,14 @@ ERROR =lib3
 
 SHELL= fish
 
+main(nvim -l -): task1, task2
+    vim.print({hello = "world"})
 
+task1()       :task2
+  set foo ${CFLAGS}
+  echo $foo
+
+task3(bash):    
+ if [ ${SHELL} == "lib3" ]; then
+     echo ${SHELL}
+ fi

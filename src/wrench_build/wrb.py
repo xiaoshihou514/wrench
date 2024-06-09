@@ -2,21 +2,20 @@ import os
 from os.path import exists
 from subprocess import call, Popen, PIPE
 from sys import argv
-from typing import override
 
-from parsy import ParseError, regex, seq, string
+from parsy import ParseError, regex, string
 
-from wrench_build.lib import error, info
+from wrench_build.lib import info, read_vars_till_invalild
 
 help_str = """
 wrench-build
 Build C files without checking all its dependencies
-Usage: 
+Usage:
 wrb [--clean|--allclean] [target1, target2, ...]
 wrb --gen-dep-graph
   --clean               Clean build files of target1, target2, ...
   --allclean            Compile all targets from scratch
-  --gen-dep-graph       Generates an SVG dependency graph
+  --gen-dep-graph       Generates an SVG dependency graph, requires the `dot` command
 """.strip()
 
 
@@ -56,7 +55,6 @@ def ar(input: list[str], output: str):
         exit(-1)
 
 
-spaces = regex(r"\s*")
 # any spaces + #include + any spaces + " + name of header + .h" + any spaces
 include = (
     (string("#include") << regex(r"\s+") << string('"'))
@@ -70,19 +68,20 @@ def get_deps(file: str) -> set[str]:
     result: set[str] = get_deps_single(file)
     for dep in list(result):
         result = result.union(get_deps(dep))
-    return result
+    return set(filter(lambda s: not s.endswith(".h"), result))
 
 
 # gets dependencies of a single module
 def get_deps_single(file: str) -> set[str]:
     result: set[str] = set()
+    if not exists(file):
+        return result
     for line in open(file).readlines():
         try:
             # got a local include
             dep: str = include.parse(line.strip())
-            dep_header = dep + ".h"
+            result.add(dep + ".h")
             # add all dependencies in header
-            result = result.union(get_deps_single(dep_header))
             # add all dependencies in implementation
             dep_impl = dep + ".c"
             # it'd better not be it self, which happens when x.c included x.h
@@ -98,19 +97,31 @@ def build_dir(out: str) -> str:
     return "out/" + out
 
 
-# Produces out, either * or *.a
-def satisfy(out: str, cc: str, flags: list[str], cwd: str):
-    out_striped: str
-    input: str
-    shared_lib = out.endswith(".a")
-    if shared_lib:
+def get_input(out: str) -> str:
+    if out.endswith(".a"):
         # wants shared library
-        input = out[:-1] + "c"
-        out_striped = out[:-1] + "o"
+        return out[:-1] + "c"
+        # out_striped = out[:-1] + "o"
     else:
         # wants executable
-        input = out + ".c"
-        out_striped = out + ".o"
+        return out + ".c"
+        # out_striped = out + ".o"
+
+
+def get_out_striped(out: str) -> str:
+    if out.endswith(".a"):
+        # wants shared library
+        return out[:-1] + "o"
+    else:
+        # wants executable
+        return out + ".o"
+
+
+# Produces out, either * or *.a
+def satisfy(out: str, cc: str, flags: list[str], cwd: str):
+    shared_lib = out.endswith(".a")
+    input = get_input(out)
+    out_striped = get_out_striped(out)
     # compile the object files that we need
     deps: list[str] = list(get_deps(input))
     deps_out: list[str] = list(map(lambda s: s[:-1] + "o", deps))
@@ -132,69 +143,9 @@ def ensure_build_dir():
         os.makedirs(build_directory)
 
 
-class Var:
-    name: str
-
-    def __init__(self, name: str):
-        self.name = name
-
-    @override
-    def __repr__(self):
-        return f"var({self.name})"
-
-
-def resolve_single(name: str, table: dict[str, list[str | Var]]):
-    val = table[name]
-    result: list[str] = []
-    for str_or_var in val:
-        if isinstance(str_or_var, str):
-            result.append(str_or_var)
-        else:
-            var = str_or_var.name
-            var_val = table.get(var)
-            if var_val is None:
-                error("{var} used but not declared")
-                exit(-1)
-            else:
-                resolve_single(var, table)
-                result += table[var]  # type: ignore[reportAttributeAccessIssue]
-    table[name] = result  # type: ignore[reportAttributeAccessIssue]
-
-
-def resolve(table: dict[str, list[str | Var]]):
-    for name in table:
-        if all(map(lambda sv: sv is str, table[name])):
-            pass
-        else:
-            resolve_single(name, table)
-
-
-var_parser = seq(
-    name=regex(r"[^=\s]+") << spaces << string("="),
-    val=(spaces >> regex(".+")).map(
-        lambda args: list(
-            map(
-                lambda arg: Var(arg[2:-1])
-                if arg.startswith("$(") and arg.endswith(")")
-                else arg,
-                args.split(),
-            )
-        )
-    ),
-)
-
-
 def read_vars() -> dict[str, list[str]]:
     if exists("Wrenchfile"):
-        lookup: dict[str, list[str | Var]] = {}
-        for line in open("Wrenchfile").readlines():
-            try:
-                key_val = var_parser.parse(line.strip())  # type: ignore[reportAny]
-                lookup[key_val["name"]] = key_val["val"]
-            except ParseError:
-                pass
-        resolve(lookup)
-        return lookup  # type: ignore[reportReturnType]
+        return read_vars_till_invalild(open("Wrenchfile").readlines())
     else:
         return {"CC": ["gcc"], "CFLAGS": []}
 
@@ -241,7 +192,7 @@ def clean(targets: list[str]):
 
 
 # Main
-if __name__ == "__main__":
+def main():
     targets_argv = argv[1:]
 
     cleanup = False
@@ -265,6 +216,7 @@ if __name__ == "__main__":
         # --gen-dep-graph
         if opt == "--gen-dep-graph":
             graph = True
+            targets_argv = targets_argv[1:]
 
     # read flags from Wrenchfile
     vars = read_vars()
@@ -290,13 +242,24 @@ if __name__ == "__main__":
         )
         dot_file = ['digraph "dependency-graph" {']
         modules = set()
-        for target in targets:
-            modules = modules.union(map(lambda s: s[:-2], get_deps(target)))
+        for target in map(get_input, targets):
+            modules = modules.union(get_deps(target))
+            modules.add(target)
         for module in modules:
-            for dep in get_deps_single(module):
-                dot_file.append(f'    "{module}" -> "{dep};"')
+            deps = get_deps_single(module[:-2] + ".c").union(
+                get_deps_single(module[:-2] + ".h")
+            )
+            deps = set(map(lambda s: s[:-2], deps))
+            for dep in deps:
+                if dep != module[:-2]:
+                    dot_file.append(f'    "{module[:-2]}" -> "{dep}";')
         dot_file.append("}")
         _ = handle.communicate(input="\n".join(dot_file))
+        exit(0)
 
     ensure_build_dir()
     build(list(targets), cc, flags)
+
+
+if __name__ == "__main__":
+    main()
