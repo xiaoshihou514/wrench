@@ -26,6 +26,8 @@ utils.c utils.h
 
 The dependency graph looks like this:
 
+![dependencies](https://github.com/xiaoshihou514/wrench/assets/108414369/7f282e97-adb7-4940-ba95-18df1fafc4a8)
+
 To build it manually, you have to run:
 
 ```bash
@@ -42,6 +44,7 @@ That's very error prone and also gets really boring after a while, you may want 
 
 ```make
 CC = gcc
+
 OBJDIR = out
 SRCDIR = .
 SRC = $(SRCDIR)/execute.c $(SRCDIR)/fetch.c $(SRCDIR)/register.c \
