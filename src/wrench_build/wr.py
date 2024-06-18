@@ -1,9 +1,12 @@
 import re
 from itertools import takewhile
+from subprocess import Popen, PIPE
 from sys import argv
 from os.path import exists
 from typing import override
 from parsy import ParseError, seq, string, regex
+
+from wrench_build.lib import info
 
 # from .lib import error, read_vars_till_invalild
 
@@ -128,8 +131,18 @@ class Task:
     def __repr__(self):
         return f"Task: {self.shell} | {' '.join(self.dependencies)} | {self.body}"
 
-    def run(self):
-        pass
+    def run(self, lookup: dict[str, "Task"]):
+        if self.dependencies:
+            for dep in self.dependencies:
+                maybe_task = lookup.get(dep)
+                if maybe_task is None:
+                    error(f"{dep} is declared as a dependency but not defined")
+                    exit(-1)
+                else:
+                    maybe_task.run(lookup)
+        handle = Popen(self.shell, stdin=PIPE, text=True)
+        info(self.body)
+        _ = handle.communicate(input=self.body)
 
 
 def read_tasks(lines: list[str], vars: dict[str, list[str]]) -> dict[str, Task]:
@@ -151,8 +164,10 @@ def read_tasks(lines: list[str], vars: dict[str, list[str]]) -> dict[str, Task]:
             error(f"Cannot parse \n\t{decl_line}\nas task declaration")
             exit(-1)
 
+        # we use the indent of the first line as the indent for the block
         body_start = lines.pop(0)
         indent = len(list(takewhile(lambda x: x == " ", body_start)))
+        # don't forget to replace the ${VAR}
         body = [str_interpolate(body_start[indent:], lookup)]
         while True:
             if not lines:
@@ -184,7 +199,6 @@ def main():
 
     vars = read_vars_till_invalild(lines)
     all_tasks = read_tasks(lines, vars)
-    print(all_tasks)
 
     for task in tasks:
         maybe_task = all_tasks.get(task)
@@ -192,7 +206,7 @@ def main():
             error(f"{task} was asked to run but is not defined")
             exit(-1)
         else:
-            maybe_task.run()
+            maybe_task.run(all_tasks)
 
 
 if __name__ == "__main__":
