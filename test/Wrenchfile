@@ -22,3 +22,6 @@ task3(bash):
  if [ ${SHELL} == "lib3" ]; then
      echo ${SHELL}
  fi
+
+ task2():
+  echo "fish"

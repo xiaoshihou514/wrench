@@ -101,7 +101,7 @@ decl_parser = seq(
         lambda s: re.split(r"\s+", s)
     ),
     dependencies=(spaces >> string(":") >> spaces >> regex("[^\n]*")).map(
-        lambda s: re.split(r"\s*,\s*", s)
+        lambda s: filter(lambda dep: dep, re.split(r"\s*,\s*", s))
     ),
 )
 
@@ -139,9 +139,9 @@ class Task:
                     error(f"{dep} is declared as a dependency but not defined")
                     exit(-1)
                 else:
+                    info(f"running dependency {dep}")
                     maybe_task.run(lookup)
         handle = Popen(self.shell, stdin=PIPE, text=True)
-        info(self.body)
         _ = handle.communicate(input=self.body)
 
 
@@ -160,8 +160,10 @@ def read_tasks(lines: list[str], vars: dict[str, list[str]]) -> dict[str, Task]:
         decl_line = line
         try:
             decl = decl_parser.parse(decl_line)  # type: ignore[reportAttributeAccessIssue]
+            if decl["shell"] == [""]:
+                decl["shell"] = vars["SHELL"]
         except ParseError:
-            error(f"Cannot parse \n\t{decl_line}\nas task declaration")
+            error(f"Cannot parse \n{decl_line}\nas task declaration")
             exit(-1)
 
         # we use the indent of the first line as the indent for the block
@@ -206,6 +208,7 @@ def main():
             error(f"{task} was asked to run but is not defined")
             exit(-1)
         else:
+            info(f"running {task}")
             maybe_task.run(all_tasks)
 
 
