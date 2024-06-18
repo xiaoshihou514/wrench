@@ -1,6 +1,6 @@
 [project]
 name = "wrench_build"
-version = "0.1.6"
+version = "0.1.7"
 description = "Build C files without checking all its dependencies"
 authors = [
     { name = "xiaoshihou514", email = "onelessononeexercise@gmail.com" }
