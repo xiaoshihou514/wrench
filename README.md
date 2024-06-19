@@ -43,22 +43,15 @@ gcc out/execute.o out/fetch.o out/register.o out/utils.o out/decode.o out/emulat
 That's very error prone and also gets really boring after a while, you may want to write a make file (or maybe tell chatgpt to write it).
 
 ```make
-CC = gcc
-
-OBJDIR = out
-SRCDIR = .
-SRC = $(SRCDIR)/execute.c $(SRCDIR)/fetch.c $(SRCDIR)/register.c \
-      $(SRCDIR)/utils.c $(SRCDIR)/decode.c $(SRCDIR)/emulate.c
-OBJ = $(OBJDIR)/execute.o $(OBJDIR)/fetch.o $(OBJDIR)/register.o \
-      $(OBJDIR)/utils.o $(OBJDIR)/decode.o $(OBJDIR)/emulate.o
-TARGET = emulate
-all: $(TARGET)
-$(TARGET): $(OBJ)
-	$(CC) $(OBJ) -o $(TARGET)
-$(OBJDIR)/%.o: $(SRCDIR)/%.c
-	$(CC) -c $< -o $@
-clean:
-	rm -f $(OBJ) $(TARGET)
+CC      = gcc
+all:    emulate
+decode.o:       decode.c decode.h instr.h register.h utils.h
+emulate:        emulate.o decode.o execute.o fetch.o register.o utils.o
+emulate.o:      emulate.c decode.h execute.h fetch.h instr.h register.h utils.h
+execute.o:      execute.c execute.h instr.h register.h utils.h
+fetch.o:        fetch.c fetch.h register.h utils.h
+register.o:     register.c register.h
+utils.o:        utils.c register.h utils.h
 ```
 
 Let's be honest, this is very hard to read and very cumbersome to write. Since C compiling follows simple rules, we can automate this. To do the same thing with wrench-build, just run `wrb emulate` to tell it what you want it to generate.
