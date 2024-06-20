@@ -107,3 +107,7 @@ task3(bash):
 task2():
   echo "fish"
 ```
+
+## Credits
+
+Wrench-build is a python rewrite of `cb` written by Duncan White (originally version was in Perl).
